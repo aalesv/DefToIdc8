@@ -16,6 +16,7 @@ Usage:
   -g, --logger-defs \<logger-defs\>    |Logger definitions file name. [default: logger.xml]
   -d, --logger-dtd \<logger-dtd\>      |Logger dtd file name. [default: logger.dtd]
   --version                          |Show version information
+  --keep-cal-id-symbol-case          |Keep CAL ID symbol case, do not transform to uppercase
   -?, -h, --help                     |Show help and usage information
 
 |Commands:||

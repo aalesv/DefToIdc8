@@ -68,6 +68,22 @@ internal class Program
 
 	private static IDictionary<string, string> tableList = new Dictionary<string, string>();
 
+	//Convert hex number as string to integer
+	private static bool HexTryParse(string hexString, out Int32? number)
+	{
+		number = null;
+		bool result = false;
+
+		try
+		{
+			number = Convert.ToInt32(hexString, 16);
+			result = true;
+		}
+		catch {}
+
+		return result;
+	}
+
 	//Adds backslash to path if not present
 	//I.e. 'c:\temp' => 'c:\temp\'
 	private static string ValidDirString (string value)
@@ -103,6 +119,7 @@ internal class Program
 				ecuId			= "",
 				ssmBaseString	= "",
 				filename_xml	= "";
+		bool keepCalIdSymbolCase = false;
 
 		void SetVariablesFromCli(string cli_cal_id = "",
 								string	cli_cpu = "",
@@ -114,7 +131,8 @@ internal class Program
 								string	cli_ecu_defs = "",
 								string	cli_logger_xml = "",
 								string	cli_logger_dir = "",
-								string	cli_logger_dtd = "")
+								string	cli_logger_dtd = "",
+								bool	cli_keep_cal_id_symbol_case = false)
 		{
 			SetDirsAndPaths(cli_all_defs_dir: cli_all_defs_dir,
 							cli_ecu_defs: cli_ecu_defs,
@@ -122,7 +140,8 @@ internal class Program
 							cli_logger_dir: cli_logger_dir,
 							cli_logger_dtd: cli_logger_dtd);
 			
-			calId		  = StringToUpperSafe(cli_cal_id);
+			keepCalIdSymbolCase = cli_keep_cal_id_symbol_case;
+			calId		  = keepCalIdSymbolCase ? cli_cal_id : StringToUpperSafe(cli_cal_id);
 			cpu			  = cli_cpu;
 			target		  = StringToUpperSafe(cli_target);
 			ecuId		  = StringToUpperSafe(cli_ecu_id);
@@ -181,6 +200,13 @@ internal class Program
 		);
 		cli_logger_dtd.AddAlias("-d");
 		cli_root.AddGlobalOption(cli_logger_dtd);
+
+		var cli_keep_cal_id_symbol_case = new Option<bool>
+		(
+			name: "--keep-cal-id-symbol-case",
+			description: "Keep CAL ID symbol case, do not transform to uppercase"
+		);
+		cli_root.AddGlobalOption(cli_keep_cal_id_symbol_case);
 
 		cli_root.SetHandler(() =>
 							{
@@ -276,7 +302,7 @@ internal class Program
 		void SetHandler(Command command, CliCommand c)
 		{
 			command.SetHandler
-			<string,string,string,string,string,string,string,string,string,string,string>
+			<string,string,string,string,string,string,string,string,string,string,string,bool>
 							(  (cli_cal_id,
 								cli_cpu,
 								cli_target,
@@ -287,7 +313,8 @@ internal class Program
 								cli_ecu_defs,
 								cli_logger_xml,
 								cli_logger_dir,
-								cli_logger_dtd) =>
+								cli_logger_dtd,
+								cli_keep_cal_id_symbol_case) =>
 				{
 					cmd = c;
 					SetVariablesFromCli(cli_cal_id: cli_cal_id,
@@ -300,7 +327,8 @@ internal class Program
 									cli_ecu_defs: cli_ecu_defs,
 									cli_logger_xml: cli_logger_xml,
 									cli_logger_dir: cli_logger_dir,
-									cli_logger_dtd: cli_logger_dtd);
+									cli_logger_dtd: cli_logger_dtd,
+									cli_keep_cal_id_symbol_case: cli_keep_cal_id_symbol_case);
 				},
 				cli_cal_id,
 				cli_cpu,
@@ -312,7 +340,8 @@ internal class Program
 				cli_ecu_defs,
 				cli_logger_xml,
 				cli_logger_dir,
-				cli_logger_dtd);
+				cli_logger_dtd,
+				cli_keep_cal_id_symbol_case);
 		}
 
 		//Parse command line
@@ -444,7 +473,7 @@ internal class Program
 				}
 				if (text4.Equals(romBase))
 				{
-					Console.WriteLine("Warning(\"Marking tables using addresses from inherited base ROM: " + text4.ToUpper() + "\");");
+					Console.WriteLine($"Warning(\"Marking tables using addresses from inherited base ROM: {text4}\");");
 				}
 				string xpath = "/roms/rom/romid[xmlid='" + text4 + "']";
 				XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
@@ -987,17 +1016,20 @@ internal class Program
 	{
 		if (address.Length > 0 && name.Length > 0)
 		{
-			string value = "MakeNameEx(" + address + ", \"" + name + "\", SN_CHECK);";
+			string value;
+			//This is to avoid "Can't rename tail byte" error
+			value = $"MakeUnknown({address}, 4, DOUNK_SIMPLE);";
+			Console.WriteLine(value);
+			value = $"MakeNameEx({address}, \"{name}\", SN_CHECK);";
 			Console.WriteLine(value);
 		}
 	}
 
 	private static void UpdateTableList(string name, string address)
 	{
-		if (address.Length > 0 && name.Length > 0)
+		if (HexTryParse(address, out _) && address.Length > 0 && name.Length > 0)
 		{
-			string s;
-			if (tableList.TryGetValue(name, out s))
+			if (tableList.TryGetValue(name, out _))
 			{
 				tableList[name] = address;
 			}
