@@ -68,7 +68,9 @@ internal class Program
 
 	private static IDictionary<string, string> tableList = new Dictionary<string, string>();
 
-	//Convert hex number as string to integer
+	/// <summary>
+	/// Convert hex number as string to integer
+	/// </summary>
 	private static bool HexTryParse(string hexString, out Int32? number)
 	{
 		number = null;
@@ -84,8 +86,25 @@ internal class Program
 		return result;
 	}
 
-	//Adds backslash to path if not present
-	//I.e. 'c:\temp' => 'c:\temp\'
+	private static bool HexTryParse(string hexString, out UInt32? number)
+	{
+		number = null;
+		bool result = false;
+
+		try
+		{
+			number = Convert.ToUInt32(hexString, 16);
+			result = true;
+		}
+		catch {}
+
+		return result;
+	}
+
+	/// <summary>
+	/// Adds backslash to path if not present
+	/// I.e. 'c:\temp' => 'c:\temp\'
+	/// </summary>
 	private static string ValidDirString (string value)
 	{
 		if (String.IsNullOrEmpty(value) || value.EndsWith("\\"))
@@ -361,9 +380,16 @@ internal class Program
 		else if (cmd == CliCommand.stdparam)
 		{
 			string functionName = $"StdParams_{calId}";
-			uint ssmBase = ConvertBaseString(ssmBaseString);
-			WriteHeader1(functionName, string.Format("Standard parameter definitions for {0} bit {1}: {2} with SSM read vector base {3}", cpu, target, calId, ssmBase.ToString("X")));
-			DefineStandardParameters(functionName, target, calId, ssmBase, cpu);
+			if (TryConvertBaseString(ssmBaseString, out UInt32? n))
+			{
+				UInt32 ssmBase = n.Value;
+				WriteHeader1(functionName, string.Format("Standard parameter definitions for {0} bit {1}: {2} with SSM read vector base {3}", cpu, target, calId, ssmBase.ToString("X")));
+				DefineStandardParameters(functionName, target, calId, ssmBase, cpu);
+			}
+			else
+			{
+				Console.Error.WriteLine($"Error: {ssmBaseString} is not valid SSM base address, terminating.");
+			}
 		}
 		else if (cmd == CliCommand.extparam)
 		{
@@ -380,9 +406,22 @@ internal class Program
 			string[] array = DefineTables(text5, calId);
 			if (array == null || array.Length == 0)
 				return;
-			uint ssmBase = ConvertBaseString(ssmBaseString);
-			DefineStandardParameters(text6, target, calId, ssmBase, array[1]);
-			DefineExtendedParameters(text7, target, array[0], array[1]);
+			if (String.IsNullOrEmpty(array[0]))
+			{
+				Console.Error.WriteLine($"Error: Cannot find 'ecuid' tag for {calId} in {ecu_defs}, terminating.");
+				return;
+			}
+			if (TryConvertBaseString(ssmBaseString, out UInt32? n))
+			{
+				UInt32 ssmBase = n.Value;
+				DefineStandardParameters(text6, target, calId, ssmBase, array[1]);
+				DefineExtendedParameters(text7, target, array[0], array[1]);
+			}
+			else
+			{
+				Console.Error.WriteLine($"Error: {ssmBaseString} is not valid SSM base address, terminating.");
+			}
+
 		}
 		else if (cmd == CliCommand.ecuf)
 		{
@@ -457,6 +496,12 @@ internal class Program
 		int num2 = 0;
 		string text3 = "32";
 		string romBase = GetRomBase(xmlId);
+		//I want minimal changes
+		if (String.IsNullOrEmpty(romBase))
+		{
+			Console.Error.WriteLine($"Error: {xmlId} not found. Either you specified wrong CAL ID or wrong definitions file.");
+			goto Exit;
+		}
 		string[] array = new string[2] { romBase, xmlId };
 		using (Stream stream = File.OpenRead(ecu_defs))
 		{
@@ -494,7 +539,7 @@ internal class Program
 				}
 				if (string.IsNullOrEmpty(text))
 				{
-					Console.WriteLine("Could not find definition for " + text4);
+					Console.Error.WriteLine($"Error: Could not find definition for {text4}");
 					return null;
 				}
 				if (text2.Contains("68HC"))
@@ -566,6 +611,7 @@ internal class Program
 			}
 			WriteIdcTableNames();
 		}
+		Exit:
 		return new string[2] { text, text3 };
 	}
 
@@ -576,18 +622,19 @@ internal class Program
 		{
 			XPathDocument xPathDocument = new XPathDocument(stream);
 			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
-			string xpath = "/roms/rom/romid[xmlid='" + xmlId + "']";
+			string xpath = $"/roms/rom/romid[xmlid='{xmlId}']";
 			XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
-			xPathNodeIterator.MoveNext();
-			xPathNavigator = xPathNodeIterator.Current;
-			xPathNavigator.MoveToChild(XPathNodeType.Element);
-			do
+			if (xPathNodeIterator.Count > 0)
 			{
-				xPathNavigator.MoveToParent();
-			}
-			while (xPathNavigator.Name != "rom");
-			if (xPathNavigator.Name == "rom")
-			{
+				xPathNodeIterator.MoveNext();
+				xPathNavigator = xPathNodeIterator.Current;
+				xPathNavigator.MoveToChild(XPathNodeType.Element);
+				do
+				{
+					xPathNavigator.MoveToParent();
+				}
+				while (xPathNavigator.Name != "rom");
+
 				result = xPathNavigator.GetAttribute("base", "");
 			}
 		}
@@ -845,7 +892,7 @@ internal class Program
 			}
 			if (string.IsNullOrEmpty(value))
 			{
-				Console.WriteLine("Could not find ECU ID for " + text);
+				Console.Error.WriteLine($"Error: Could not find ECU ID for {text}");
 			}
 			if (text2.Contains("68HC"))
 			{
@@ -1027,7 +1074,7 @@ internal class Program
 
 	private static void UpdateTableList(string name, string address)
 	{
-		if (HexTryParse(address, out _) && address.Length > 0 && name.Length > 0)
+		if (HexTryParse(address, out int? _) && address.Length > 0 && !String.IsNullOrEmpty(name))
 		{
 			if (tableList.TryGetValue(name, out _))
 			{
@@ -1073,11 +1120,6 @@ internal class Program
 		return text2;
 	}
 
-	private static bool CategoryIs(string[] args, string category)
-	{
-		return string.Compare(args[0], category, StringComparison.OrdinalIgnoreCase) == 0;
-	}
-
 	private static void FormatData(string address, string length)
 	{
 		string text = "";
@@ -1103,110 +1145,25 @@ internal class Program
 		}
 	}
 
-	private static uint ConvertBaseString(string ssmBaseString)
+	private static bool TryConvertBaseString(string ssmBaseString, out UInt32? ssmBase)
 	{
-		ssmBaseString = ssmBaseString.ToUpper();
-		uint num = uint.Parse(ssmBaseString, NumberStyles.HexNumber);
-		if (num < 131072)
+		ssmBase = null;
+		bool result = false;
+
+		if (HexTryParse(ssmBaseString, out ssmBase))
 		{
-			uint num2 = num + 131072;
-			Console.Error.WriteLine("SSM base adjusted from 0x" + num.ToString("X") + " to 0x" + num2.ToString("X"));
-			num = num2;
+			const UInt32 ssmBaseLowerLimit = 131072;//0x20000
+			if (ssmBase < ssmBaseLowerLimit) 
+			{
+				UInt32? adjustedSsmBase = ssmBase + ssmBaseLowerLimit;
+				Console.Error.WriteLine($"Warning: SSM base adjusted from 0x{ssmBase.Value.ToString("X")} to 0x{adjustedSsmBase.Value.ToString("X")}");
+				ssmBase = adjustedSsmBase;
+			}
+			result = true;
 		}
-		return num;
+
+		return result;
 	}
 
-	private static void Usage()
-	{
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("Usage:");
-		stringBuilder.AppendLine("XmlToIdc.exe <category> <options>...");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("Where <category> is one of the following:");
-		stringBuilder.AppendLine("    tables   <cal-id> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine("    stdparam <cpu> <target> <cal-id> <ssm-base> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine("    extparam <cpu> <target> <ecu-id> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine("    makeall  <target> <cal-id> <ssm-base> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine("    ecuf     <filename.xml> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("Where <options> is the following as required by the category:");
-		stringBuilder.AppendLine("    <cal-id>   is the Calibration id, e.g. A2WC522N");
-		stringBuilder.AppendLine("    <cpu>      is the CPU bits identifier of the ECU, e.g. 16 or 32");
-		stringBuilder.AppendLine("    <target>   is the Car control module,");
-		stringBuilder.AppendLine("                 e.g. ecu (engine control unit) or tcu (transmission control unit)");
-		stringBuilder.AppendLine("    <ecu-id>   is the ECU identifier, e.g. 2F12785606");
-		stringBuilder.AppendLine("    <ssm-base> is the Base address of the SSM 'read' vector, e.g. 4EDDC");
-		stringBuilder.AppendLine($"    <path\\to\\def.xml> Path to RomRaider definitions file. Optional. {ecu_defs} by default");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("And you'll want to redirect stdout to a file, like:");
-		stringBuilder.AppendLine("XmlToIdc.exe ... > Whatever.idc");
-		Console.Write(stringBuilder.ToString());
-	}
-
-	private static void UsageTables()
-	{
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("Usage:");
-		stringBuilder.AppendLine("XmlToIdc.exe tables <cal-id> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("<cal-id> is the Calibration id, e.g. A2WC522N");
-		stringBuilder.AppendLine("<path\\to\\def.xml> Path to RomRaider definitions file. Optional. 'ecu_defs.xml' by default");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("And you'll want to redirect stdout to a file, like:");
-		stringBuilder.AppendLine("XmlToIdc.exe tables A2WC522N > Tables.idc");
-		Console.Write(stringBuilder.ToString());
-	}
-
-	private static void UsageStdParam()
-	{
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("Usage:");
-		stringBuilder.AppendLine("XmlToIdc.exe stdparam <cpu> <target> <cal-id> <ssm-base> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("<cpu>      is the CPU bits identifier of the ECU, e.g. 16 or 32");
-		stringBuilder.AppendLine("<target>   is the Car control module,");
-		stringBuilder.AppendLine("             e.g. ecu (engine control unit) or tcu (transmission control unit)");
-		stringBuilder.AppendLine("<cal-id>   is the Calibration id, e.g. A2WC522N");
-		stringBuilder.AppendLine("<ssm-base> is the Base address of the SSM 'read' vector, e.g. 4EDDC");
-		stringBuilder.AppendLine("<path\\to\\def.xml> Path to RomRaider definitions file. Optional. 'ecu_defs.xml' by default");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("And you'll want to redirect stdout to a file, like:");
-		stringBuilder.AppendLine("XmlToIdc.exe stdparam 32 ecu A2WC522N 4EDDC > StdParam.idc");
-		Console.Write(stringBuilder.ToString());
-	}
-
-	private static void UsageExtParam()
-	{
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("Usage:");
-		stringBuilder.AppendLine("XmlToIdc.exe extparam <cpu> <target> <ecu-id> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("<cpu>    is the CPU bits identifier of the ECU, e.g. 16 or 32");
-		stringBuilder.AppendLine("<target> is the Car control module,");
-		stringBuilder.AppendLine("           e.g. ecu (engine control unit) or tcu (transmission control unit)");
-		stringBuilder.AppendLine("<ecu-id> is the ECU identifier, e.g. 2E14486106");
-		stringBuilder.AppendLine("<path\\to\\def.xml> Path to RomRaider definitions file. Optional. 'ecu_defs.xml' by default");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("And you'll want to redirect stdout to a file, like:");
-		stringBuilder.AppendLine("XmlToIdc.exe extparam 16 ecu 2E14486106 > ExtParam.idc");
-		Console.Write(stringBuilder.ToString());
-	}
-
-	private static void UsageMakeAll()
-	{
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("Usage:");
-		stringBuilder.AppendLine("XmlToIdc.exe makeall <target> <cal-id> <ssm-base> [<path\\to\\def.xml>]");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("<target>   is the Car control module,");
-		stringBuilder.AppendLine("             e.g. ecu (engine control unit) or tcu (transmission control unit)");
-		stringBuilder.AppendLine("<cal-id>   is the Calibration id, e.g. A2WC522N");
-		stringBuilder.AppendLine("<ssm-base> is the Base address of the SSM 'read' vector, e.g. 4EDDC");
-		stringBuilder.AppendLine("<path\\to\\def.xml> Path to RomRaider definitions file. Optional. 'ecu_defs.xml' by default");
-		stringBuilder.AppendLine();
-		stringBuilder.AppendLine("And you'll want to redirect stdout to a file, like:");
-		stringBuilder.AppendLine("XmlToIdc.exe makeall ecu A2WC522N 4EDDC > AllParams.idc");
-		Console.Write(stringBuilder.ToString());
-	}
 }
 }
