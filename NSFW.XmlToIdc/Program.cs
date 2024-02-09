@@ -7,7 +7,6 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
-using System.Windows.Forms;
 using System.Xml.XPath;
 using System.CommandLine;
 
@@ -27,6 +26,15 @@ namespace NSFW.XmlToIdc
 
 internal class Program
 {
+	/// <summary>
+	/// Custom exception after which program must terminate.
+	/// </summary>
+	private class FatalException : ApplicationException
+	{
+		public FatalException() : base() {}
+		public FatalException(string message) : base(message) {}
+		public FatalException(string message, Exception inner) : base(message, inner) {}
+	}
 	private static string _all_defs_dir = "";
 	private static string all_defs_dir
 	{
@@ -51,14 +59,14 @@ internal class Program
 	private static string _logger_xml = "logger.xml";
 	private static string logger_xml
 	{
-		get => (String.IsNullOrEmpty(all_defs_dir) ? logger_dir : all_defs_dir) + _logger_xml;
+		get => LoggerFileFullPath(_logger_xml);
 		set => _logger_xml = value;
 	}
 	
 	private static string _logger_dtd = "logger.dtd";
 	private static string logger_dtd
 	{
-		get => (String.IsNullOrEmpty(all_defs_dir) ? logger_dir : all_defs_dir) + _logger_dtd;
+		get => LoggerFileFullPath(_logger_dtd);
 		set => _logger_dtd = value;
 	}
 
@@ -68,6 +76,16 @@ internal class Program
 
 	private static IDictionary<string, string> tableList = new Dictionary<string, string>();
 
+	/// <summary>
+	/// Returns full path with name to logger file.
+	/// Path to logger files is overriden by
+	/// path to all files if set.
+	/// </summary>
+	private static string LoggerFileFullPath(string loggerFilename)
+	{
+		string dirName = String.IsNullOrEmpty(all_defs_dir) ? logger_dir : all_defs_dir;
+		return dirName + loggerFilename;
+	}
 	/// <summary>
 	/// Convert hex number as string to integer
 	/// </summary>
@@ -168,13 +186,6 @@ internal class Program
 			filename_xml  = StringToUpperSafe(cli_filename_xml);
 		}
 
-		StringBuilder stringBuilder = new StringBuilder();
-		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
-		stringBuilder.AppendLine($"// This file gernerated by XmlToIdc version: {Assembly.GetExecutingAssembly().GetName().Version}");
-		stringBuilder.AppendLine($"// running on mscorlib.dll version: {typeof(string).Assembly.GetName().Version}");
-		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
-		Console.Write(stringBuilder.ToString());
-
 		var cli_root = new RootCommand("Convert ECU and logger definitions to IDC script.");
 
 		var cli_all_defs_dir = new Option<string>
@@ -227,6 +238,7 @@ internal class Program
 		);
 		cli_root.AddGlobalOption(cli_keep_cal_id_symbol_case);
 
+		//If no commands specified, print help
 		cli_root.SetHandler(() =>
 							{
 								cmd = CliCommand.help;
@@ -366,66 +378,81 @@ internal class Program
 		//Parse command line
 		cli_root.Invoke(args);
 
-		if (cmd == CliCommand.help)
+		try
 		{
-			cli_root.Invoke(["-h"]);
-			return;
-		}
-		else if (cmd == CliCommand.tables)
-		{
-			string functionName = $"Tables_{calId}";
-			WriteHeader1(functionName, $"Table definitions for {calId}");
-			DefineTables(functionName, calId);
-		}
-		else if (cmd == CliCommand.stdparam)
-		{
-			string functionName = $"StdParams_{calId}";
-			if (TryConvertBaseString(ssmBaseString, out UInt32? n))
+			//Print header only in case of real work
+			if (cmd > CliCommand.help)
 			{
-				UInt32 ssmBase = n.Value;
-				WriteHeader1(functionName, string.Format("Standard parameter definitions for {0} bit {1}: {2} with SSM read vector base {3}", cpu, target, calId, ssmBase.ToString("X")));
-				DefineStandardParameters(functionName, target, calId, ssmBase, cpu);
-			}
-			else
-			{
-				Console.Error.WriteLine($"Error: {ssmBaseString} is not valid SSM base address, terminating.");
-			}
-		}
-		else if (cmd == CliCommand.extparam)
-		{
-				string functionName = $"ExtParams_{ecuId}";
-				WriteHeader1(functionName, $"Extended parameter definitions for {cpu} bit {target}: {ecuId}");
-				DefineExtendedParameters(functionName, target, ecuId, cpu);
-		}
-		else if (cmd == CliCommand.makeall)
-		{
-			string text5 = "Tables";
-			string text6 = "StdParams";
-			string text7 = "ExtParams";
-			WriteHeader3(text5, text6, text7, $"All definitions for {target}: {calId} with SSM read vector base {ssmBaseString}");
-			string[] array = DefineTables(text5, calId);
-			if (array == null || array.Length == 0)
-				return;
-			if (String.IsNullOrEmpty(array[0]))
-			{
-				Console.Error.WriteLine($"Error: Cannot find 'ecuid' tag for {calId} in {ecu_defs}, terminating.");
-				return;
-			}
-			if (TryConvertBaseString(ssmBaseString, out UInt32? n))
-			{
-				UInt32 ssmBase = n.Value;
-				DefineStandardParameters(text6, target, calId, ssmBase, array[1]);
-				DefineExtendedParameters(text7, target, array[0], array[1]);
-			}
-			else
-			{
-				Console.Error.WriteLine($"Error: {ssmBaseString} is not valid SSM base address, terminating.");
+				StringBuilder stringBuilder = new StringBuilder();
+				stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
+				stringBuilder.AppendLine($"// This file gernerated by XmlToIdc version: {Assembly.GetExecutingAssembly().GetName().Version}");
+				stringBuilder.AppendLine($"// running on mscorlib.dll version: {typeof(string).Assembly.GetName().Version}");
+				stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
+				Console.Write(stringBuilder.ToString());
 			}
 
+			if (cmd == CliCommand.help)
+			{
+				cli_root.Invoke(["-h"]);
+				return;
+			}
+			else if (cmd == CliCommand.tables)
+			{
+				string functionName = $"Tables_{calId}";
+				WriteHeader1(functionName, $"Table definitions for {calId}");
+				DefineTables(functionName, calId);
+			}
+			else if (cmd == CliCommand.stdparam)
+			{
+				string functionName = $"StdParams_{calId}";
+				if (TryConvertBaseString(ssmBaseString, out UInt32? n))
+				{
+					UInt32 ssmBase = n.Value;
+					WriteHeader1(functionName, string.Format("Standard parameter definitions for {0} bit {1}: {2} with SSM read vector base {3}", cpu, target, calId, ssmBase.ToString("X")));
+					DefineStandardParameters(functionName, target, calId, ssmBase, cpu);
+				}
+				else
+				{
+					throw new FatalException($"{ssmBaseString} is not valid SSM base address");
+				}
+			}
+			else if (cmd == CliCommand.extparam)
+			{
+					string functionName = $"ExtParams_{ecuId}";
+					WriteHeader1(functionName, $"Extended parameter definitions for {cpu} bit {target}: {ecuId}");
+					DefineExtendedParameters(functionName, target, ecuId, cpu);
+			}
+			else if (cmd == CliCommand.makeall)
+			{
+				string text5 = "Tables";
+				string text6 = "StdParams";
+				string text7 = "ExtParams";
+				WriteHeader3(text5, text6, text7, $"All definitions for {target}: {calId} with SSM read vector base {ssmBaseString}");
+				string[] array = DefineTables(text5, calId);
+
+				if (String.IsNullOrEmpty(array[0]))
+				{
+					throw new FatalException($"Cannot find 'ecuid' tag for {calId} in {ecu_defs}");
+				}
+				if (TryConvertBaseString(ssmBaseString, out UInt32? n))
+				{
+					UInt32 ssmBase = n.Value;
+					DefineStandardParameters(text6, target, calId, ssmBase, array[1]);
+					DefineExtendedParameters(text7, target, array[0], array[1]);
+				}
+				else
+				{
+					throw new FatalException($"{ssmBaseString} is not valid SSM base address");
+				}
+			}
+			else if (cmd == CliCommand.ecuf)
+			{
+				DefineEcufTables(filename_xml);
+			}
 		}
-		else if (cmd == CliCommand.ecuf)
+		catch(FatalException e)
 		{
-			DefineEcufTables(filename_xml);
+			Console.Error.WriteLine($"Error: {e.Message}. Terminating.");
 		}
 	}
 
@@ -433,8 +460,7 @@ internal class Program
 	{
 		if (!File.Exists(ecu_defs))
 		{
-			Console.Error.WriteLine($"Error: Definitions file {ecu_defs} not found.");
-			return null;
+			throw new FatalException($"Definitions file {ecu_defs} not found");
 		}
 		WriteHeader2(functionName);
 		string[] array = WriteTableNames(calId);
@@ -446,13 +472,11 @@ internal class Program
 	{
 		if (!File.Exists(logger_xml))
 		{
-			Console.Error.WriteLine($"Error: {logger_xml} not found.");
-			return;
+			throw new FatalException($"{logger_xml} not found");
 		}
 		if (!File.Exists(logger_dtd))
 		{
-			Console.Error.WriteLine($"Error: {logger_dtd} not found.");
-			return;
+			throw new FatalException($"{logger_dtd} not found");
 		}
 		WriteHeader2(functionName);
 		WriteStandardParameters(target, calId, ssmBase, cpu);
@@ -463,13 +487,11 @@ internal class Program
 	{
 		if (!File.Exists(logger_xml))
 		{
-			Console.Error.WriteLine($"Error: {logger_xml} not found.");
-			return;
+			throw new FatalException($"{logger_xml} not found");
 		}
 		if (!File.Exists(logger_dtd))
 		{
-			Console.Error.WriteLine($"Error: {logger_dtd} not found.");
-			return;
+			throw new FatalException($"{logger_dtd} not found");
 		}
 		WriteHeader2(functionName);
 		WriteExtendedParameters(target, ecuId, cpu);
@@ -480,7 +502,7 @@ internal class Program
 	{
 		if (!File.Exists(fileName))
 		{
-			Console.Error.WriteLine($"{fileName} not found.");
+			throw new FatalException($"{fileName} not found");
 		}
 		WriteEcufTableNames(fileName);
 	}
@@ -496,11 +518,10 @@ internal class Program
 		int num2 = 0;
 		string text3 = "32";
 		string romBase = GetRomBase(xmlId);
-		//I want minimal changes
+
 		if (String.IsNullOrEmpty(romBase))
 		{
-			Console.Error.WriteLine($"Error: {xmlId} not found. Either you specified wrong CAL ID or wrong definitions file.");
-			goto Exit;
+			throw new FatalException($"{xmlId} not found - either you specified wrong CAL ID or wrong definitions file");
 		}
 		string[] array = new string[2] { romBase, xmlId };
 		using (Stream stream = File.OpenRead(ecu_defs))
@@ -539,8 +560,7 @@ internal class Program
 				}
 				if (string.IsNullOrEmpty(text))
 				{
-					Console.Error.WriteLine($"Error: Could not find definition for {text4}");
-					return null;
+					throw new FatalException($"Could not find definition for {text4}");
 				}
 				if (text2.Contains("68HC"))
 				{
@@ -611,7 +631,6 @@ internal class Program
 			}
 			WriteIdcTableNames();
 		}
-		Exit:
 		return new string[2] { text, text3 };
 	}
 
@@ -892,7 +911,7 @@ internal class Program
 			}
 			if (string.IsNullOrEmpty(value))
 			{
-				Console.Error.WriteLine($"Error: Could not find ECU ID for {text}");
+				throw new FatalException($"Could not find ECU ID for {text}");
 			}
 			if (text2.Contains("68HC"))
 			{
