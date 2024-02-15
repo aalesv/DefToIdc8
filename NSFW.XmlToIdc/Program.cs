@@ -388,6 +388,17 @@ internal class Program
 				stringBuilder.AppendLine($"// This file gernerated by XmlToIdc version: {Assembly.GetExecutingAssembly().GetName().Version}");
 				stringBuilder.AppendLine($"// running on mscorlib.dll version: {typeof(string).Assembly.GetName().Version}");
 				stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
+				stringBuilder.AppendLine();
+				stringBuilder.AppendLine("#include <idc.idc>");
+				stringBuilder.AppendLine("static MakeNameExSafe(address, name, flag)");
+				stringBuilder.AppendLine("{");
+				stringBuilder.AppendLine("	if isTail(GetFlags(address))");
+				stringBuilder.AppendLine("	{");
+				stringBuilder.AppendLine("		MakeUnknown(address, 4, DOUNK_SIMPLE);");
+				stringBuilder.AppendLine("	}");
+				stringBuilder.AppendLine("	MakeNameEx(address, name, flag);");
+				stringBuilder.AppendLine("}");
+				stringBuilder.AppendLine();
 				Console.Write(stringBuilder.ToString());
 			}
 
@@ -687,7 +698,7 @@ internal class Program
 					stringBuilder.AppendLine("if (referenceAddress > 0)");
 					stringBuilder.AppendLine("{");
 					stringBuilder.AppendLine("    referenceAddress = referenceAddress - " + text2 + ";");
-					string value3 = "    MakeNameEx(referenceAddress, \"" + text + "\", SN_CHECK);";
+					string value3 = "    MakeNameExSafe(referenceAddress, \"" + text + "\", SN_CHECK);";
 					stringBuilder.AppendLine(value3);
 					stringBuilder.AppendLine("}");
 					stringBuilder.AppendLine("else");
@@ -785,7 +796,7 @@ internal class Program
 						stringBuilder.AppendLine("        OpOff(MK_FP(\"ROM\", opAddr), 0, 0x20000);");
 						stringBuilder.AppendLine("    }");
 						stringBuilder.AppendLine("    add_dref(opAddr, Dword(" + innerXml + "), dr_I);");
-						string value2 = "    MakeNameEx(addr, \"" + arg + "\", SN_CHECK);";
+						string value2 = "    MakeNameExSafe(addr, \"" + arg + "\", SN_CHECK);";
 						stringBuilder.AppendLine(value2);
 						stringBuilder.AppendLine("}");
 						stringBuilder.AppendLine("else");
@@ -997,7 +1008,6 @@ internal class Program
 		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
 		stringBuilder.AppendLine("// " + description);
 		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
-		stringBuilder.AppendLine("#include <idc.idc>");
 		stringBuilder.AppendLine("static main ()");
 		stringBuilder.AppendLine("{");
 		stringBuilder.AppendLine("    " + functionName + " ();");
@@ -1020,7 +1030,6 @@ internal class Program
 		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
 		stringBuilder.AppendLine("// " + description);
 		stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
-		stringBuilder.AppendLine("#include <idc.idc>");
 		stringBuilder.AppendLine("static main ()");
 		stringBuilder.AppendLine("{");
 		stringBuilder.AppendLine("    " + functionName1 + " ();");
@@ -1083,10 +1092,7 @@ internal class Program
 		if (address.Length > 0 && name.Length > 0)
 		{
 			string value;
-			//This is to avoid "Can't rename tail byte" error
-			value = $"MakeUnknown({address}, 4, DOUNK_SIMPLE);";
-			Console.WriteLine(value);
-			value = $"MakeNameEx({address}, \"{name}\", SN_CHECK);";
+			value = $"MakeNameExSafe({address}, \"{name}\", SN_CHECK);";
 			Console.WriteLine(value);
 		}
 	}
