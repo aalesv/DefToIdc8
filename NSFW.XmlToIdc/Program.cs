@@ -474,6 +474,7 @@ internal class Program
 			throw new FatalException($"Definitions file {ecu_defs} not found");
 		}
 		WriteHeader2(functionName);
+		WriteTableNamesHeader();
 		string[] array = WriteTableNames(calId);
 		WriteFooter(functionName);
 		return array;
@@ -518,9 +519,14 @@ internal class Program
 		WriteEcufTableNames(fileName);
 	}
 
+private static void WriteTableNamesHeader()
+{
+	Console.WriteLine("auto referenceAddress;");
+}
+
+//Can do recursive calls
 	private static string[] WriteTableNames(string xmlId)
 	{
-		Console.WriteLine("auto referenceAddress;");
 		string text = null;
 		string text2 = null;
 		int num = 0;
@@ -550,7 +556,13 @@ internal class Program
 				}
 				if (text4.Equals(romBase))
 				{
-					Console.WriteLine($"Warning(\"Marking tables using addresses from inherited base ROM: {text4}\");");
+					Console.WriteLine($"print(\"Note: Marking tables using addresses from inherited base ROM: {text4}\");");
+					Console.WriteLine($"// Start tables for {text4}");
+					//Recursive call
+					//Defs can inherit several other defs
+					WriteTableNames(text4);
+					Console.WriteLine($"// End tables for {text4}");
+					continue;
 				}
 				string xpath = "/roms/rom/romid[xmlid='" + text4 + "']";
 				XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
@@ -641,6 +653,8 @@ internal class Program
 				}
 			}
 			WriteIdcTableNames();
+			//We need to clear table list due to recursion
+			ClearTableList();
 		}
 		return new string[2] { text, text3 };
 	}
@@ -1110,6 +1124,14 @@ internal class Program
 				tableList.Add(name, address);
 			}
 		}
+	}
+
+/// <summary>
+/// CLears table list
+/// </summary>
+	private static void ClearTableList()
+	{
+		tableList.Clear();
 	}
 
 	private static string ConvertName(string original)
