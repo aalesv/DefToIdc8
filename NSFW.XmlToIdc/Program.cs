@@ -519,13 +519,20 @@ internal class Program
 		WriteEcufTableNames(fileName);
 	}
 
-private static void WriteTableNamesHeader()
-{
-	Console.WriteLine("auto referenceAddress;");
-}
+	private static void WriteTableNamesHeader()
+	{
+		Console.WriteLine("auto referenceAddress;");
+	}
 
-//Can do recursive calls
 	private static string[] WriteTableNames(string xmlId)
+	{
+		string[] result = PopulateTableNames(xmlId);
+		WriteIdcTableNames();
+		return result;
+
+	}
+	//Can do recursive calls
+	private static string[] PopulateTableNames(string xmlId)
 	{
 		string text = null;
 		string text2 = null;
@@ -557,11 +564,9 @@ private static void WriteTableNamesHeader()
 				if (text4.Equals(romBase))
 				{
 					Console.WriteLine($"print(\"Note: Marking tables using addresses from inherited base ROM: {text4}\");");
-					Console.WriteLine($"// Start tables for {text4}");
 					//Recursive call
 					//Defs can inherit several other defs
-					WriteTableNames(text4);
-					Console.WriteLine($"// End tables for {text4}");
+					PopulateTableNames(text4);
 					continue;
 				}
 				string xpath = "/roms/rom/romid[xmlid='" + text4 + "']";
@@ -652,9 +657,6 @@ private static void WriteTableNamesHeader()
 					Console.WriteLine("// No tables found specifically for ROM " + text4 + ", used inherited ROM");
 				}
 			}
-			WriteIdcTableNames();
-			//We need to clear table list due to recursion
-			ClearTableList();
 		}
 		return new string[2] { text, text3 };
 	}
@@ -1124,14 +1126,6 @@ private static void WriteTableNamesHeader()
 				tableList.Add(name, address);
 			}
 		}
-	}
-
-/// <summary>
-/// CLears table list
-/// </summary>
-	private static void ClearTableList()
-	{
-		tableList.Clear();
 	}
 
 	private static string ConvertName(string original)
