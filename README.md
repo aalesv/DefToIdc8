@@ -1,6 +1,7 @@
 ## DefToIdc - convert RomRaider ECU and logger definitions to IDC script
 
-This is fork of XmlToIdc. DefToIdc does absolutely the same, except it has options to specify file names and dirs.
+This is fork of XmlToIdc. It converts RomRaider ECU and logger definitions,
+EcuFlash and ScoobyRom definitions to IDC script.
 
 **To run you need .NET 8 runtime installed**
 
@@ -25,3 +26,5 @@ Usage:
   s, stdparam \<cpu\> \<target\> \<cal-id\> \<ssm-base\>  |Convert standard parameters only.
   e, extparam \<cpu\> \<target\> \<ecu-id\>             |Convert extended parameters only.
   m, makeall \<target\> \<cal-id\> \<ssm-base\>         |Convert all - tables, standadrd parameters, extended parameters.
+ ecuf, f \<filename.xml\>                          |Convert EcuFlash xml definitions file.
+  c, scoobyrom \<filename.xml\>                     |Convert ScoobyRom xml definitions file.

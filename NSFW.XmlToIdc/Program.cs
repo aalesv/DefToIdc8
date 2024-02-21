@@ -21,7 +21,8 @@ namespace NSFW.XmlToIdc
 		stdparam,
 		extparam,
 		makeall,
-		ecuf
+		ecuf,
+		scoobyrom
 	}
 
 internal class Program
@@ -322,13 +323,24 @@ internal class Program
 		cli_root.AddCommand(cli_makeall);
 
 		var cli_ecuf = new Command(
-			name: "ecuf"
+			name: "ecuf",
+			description: "Convert EcuFlash xml definitions file."
 		);
 
 		cli_ecuf.AddAlias("f");
 		cli_ecuf.AddArgument(cli_filename_xml);
 		SetHandler(cli_ecuf, CliCommand.ecuf);
 		cli_root.AddCommand(cli_ecuf);
+
+		var cli_scoobyrom = new Command(
+			name: "scoobyrom",
+			description: "Convert ScoobyRom xml definitions file."
+		);
+
+		cli_scoobyrom.AddAlias("c");
+		cli_scoobyrom.AddArgument(cli_filename_xml);
+		SetHandler(cli_scoobyrom, CliCommand.scoobyrom);
+		cli_root.AddCommand(cli_scoobyrom);
 
 		void SetHandler(Command command, CliCommand c)
 		{
@@ -460,6 +472,11 @@ internal class Program
 			{
 				DefineEcufTables(filename_xml);
 			}
+			else if (cmd == CliCommand.scoobyrom)
+			{
+				DefineScoobyRom(filename_xml);
+			}
+
 		}
 		catch(FatalException e)
 		{
@@ -519,6 +536,20 @@ internal class Program
 		WriteEcufTableNames(fileName);
 	}
 
+	private static void DefineScoobyRom(string fileName)
+	{
+		if (!File.Exists(fileName))
+		{
+			throw new FatalException($"{fileName} not found");
+		}
+		string functionName="Tables";
+		WriteHeader1(functionName, "Table definitions");
+		WriteHeader2(functionName);
+		WriteTableNamesHeader();
+		WriteScoobyRom(fileName);
+		WriteFooter(functionName);
+	}
+
 	private static void WriteTableNamesHeader()
 	{
 		Console.WriteLine("auto referenceAddress;");
@@ -529,7 +560,6 @@ internal class Program
 		string[] result = PopulateTableNames(xmlId);
 		WriteIdcTableNames();
 		return result;
-
 	}
 	//Can do recursive calls
 	private static string[] PopulateTableNames(string xmlId)
@@ -543,9 +573,15 @@ internal class Program
 		string text3 = "32";
 		string romBase = GetRomBase(xmlId);
 
-		if (String.IsNullOrEmpty(romBase))
+		if (romBase == null)
 		{
 			throw new FatalException($"{xmlId} not found - either you specified wrong CAL ID or wrong definitions file");
+		}
+		if (romBase == "")
+		{
+			Console.Error.WriteLine($"Warning: {xmlId} 'rom' element does not have 'base' attribute set. Are your definitions alright? I'll continue anyway.");
+			//"BASE" will be skipped anyway
+			romBase="BASE";
 		}
 		string[] array = new string[2] { romBase, xmlId };
 		using (Stream stream = File.OpenRead(ecu_defs))
@@ -661,9 +697,18 @@ internal class Program
 		return new string[2] { text, text3 };
 	}
 
+	/// <summary>
+	/// Get base for id
+	/// </summary>
+	/// <param name="xmlId"></param>
+	/// <returns>
+	/// String id if found,
+	/// empty string if base not found,
+	/// null if xmlId not found.
+	/// </returns>
 	private static string GetRomBase(string xmlId)
 	{
-		string result = "";
+		string result = null;
 		using (Stream stream = File.OpenRead(ecu_defs))
 		{
 			XPathDocument xPathDocument = new XPathDocument(stream);
@@ -1018,6 +1063,70 @@ internal class Program
 		return null;
 	}
 
+	private static void WriteScoobyRom(string fileName)
+	{
+		PopulateScoobyRom(fileName);
+		WriteIdcTableNames();
+	}
+
+	private static void PopulateScoobyRom(string fileName)
+	{
+		using (Stream stream = File.OpenRead(fileName))
+		{
+			XPathDocument xPathDocument = new XPathDocument(stream);
+			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
+			names.Clear();
+
+			string xpath = "/rom";
+			XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
+			xPathNodeIterator.MoveNext();
+			xPathNavigator = xPathNodeIterator.Current;
+			xPathNavigator.MoveToChild(XPathNodeType.Element);
+
+			while (xPathNavigator.MoveToNext())
+			{
+				string element_name = xPathNavigator.Name;
+				if (element_name != "table2D" && element_name != "table3D")
+				{
+					continue;
+				}
+				string table_name = xPathNavigator.GetAttribute("name", "");
+				string table_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
+				if (!table_storageaddress.StartsWith("0x"))
+				{
+					table_storageaddress = "0x" + table_storageaddress;
+				}
+				string converted_table_name;
+				if (String.IsNullOrEmpty(table_name))
+				{
+					table_name = $"{element_name} at {table_storageaddress}";
+				}
+				converted_table_name = ConvertName(table_name);
+				UpdateTableList(converted_table_name, table_storageaddress);
+
+				if (xPathNavigator.HasChildren)
+				{
+					xPathNavigator.MoveToChild(XPathNodeType.Element);
+					do
+					{
+						string inner_element_name = xPathNavigator.Name;
+						if (inner_element_name.StartsWith("axis") || inner_element_name == "values")
+						{
+							string inner_element_addr = xPathNavigator.GetAttribute("storageaddress", "");
+							if (!inner_element_addr.StartsWith("0x"))
+							{
+								inner_element_addr = "0x" + inner_element_addr;
+							}
+							inner_element_name = ConvertName($"{table_name} {inner_element_name}");
+							UpdateTableList(inner_element_name, inner_element_addr);
+						}
+					} while (xPathNavigator.MoveToNext());
+
+					xPathNavigator.MoveToParent();
+				}
+			}
+		}
+	}
 	private static void WriteHeader1(string functionName, string description)
 	{
 		StringBuilder stringBuilder = new StringBuilder();
