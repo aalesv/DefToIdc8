@@ -397,7 +397,7 @@ internal class Program
 			{
 				StringBuilder stringBuilder = new StringBuilder();
 				stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
-				stringBuilder.AppendLine($"// This file gernerated by XmlToIdc version: {Assembly.GetExecutingAssembly().GetName().Version}");
+				stringBuilder.AppendLine($"// This file gernerated by DefToIdc version: {Assembly.GetExecutingAssembly().GetName().Version}");
 				stringBuilder.AppendLine($"// running on mscorlib.dll version: {typeof(string).Assembly.GetName().Version}");
 				stringBuilder.AppendLine("///////////////////////////////////////////////////////////////////////////////");
 				stringBuilder.AppendLine();
