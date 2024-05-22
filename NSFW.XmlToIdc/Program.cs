@@ -564,8 +564,8 @@ internal class Program
 	//Can do recursive calls
 	private static string[] PopulateTableNames(string xmlId)
 	{
-		string text = null;
-		string text2 = null;
+		string ecuId = null;
+		string memModel = null;
 		int num = 0;
 		string name = null;
 		bool flag = false;
@@ -589,23 +589,23 @@ internal class Program
 			XPathDocument xPathDocument = new XPathDocument(stream);
 			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
 			string[] array2 = array;
-			foreach (string text4 in array2)
+			foreach (string loop_xmlId in array2)
 			{
 				num = 0;
 				names.Clear();
-				if (text4.Contains("BASE"))
+				if (loop_xmlId.Contains("BASE"))
 				{
 					continue;
 				}
-				if (text4.Equals(romBase))
+				if (loop_xmlId.Equals(romBase))
 				{
-					Console.WriteLine($"print(\"Note: Marking tables using addresses from inherited base ROM: {text4}\");");
+					Console.WriteLine($"print(\"Note: Marking tables using addresses from inherited base ROM: {loop_xmlId}\");");
 					//Recursive call
 					//Defs can inherit several other defs
-					PopulateTableNames(text4);
+					PopulateTableNames(loop_xmlId);
 					continue;
 				}
-				string xpath = "/roms/rom/romid[xmlid='" + text4 + "']";
+				string xpath = "/roms/rom/romid[xmlid='" + loop_xmlId + "']";
 				XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
 				xPathNodeIterator.MoveNext();
 				xPathNavigator = xPathNodeIterator.Current;
@@ -614,23 +614,24 @@ internal class Program
 				{
 					if (xPathNavigator.Name == "ecuid")
 					{
-						text = xPathNavigator.InnerXml;
+						ecuId = xPathNavigator.InnerXml;
 					}
 					if (xPathNavigator.Name == "memmodel")
 					{
-						text2 = xPathNavigator.InnerXml;
+						memModel = xPathNavigator.InnerXml;
 						break;
 					}
 				}
-				if (string.IsNullOrEmpty(text))
+				if (string.IsNullOrEmpty(ecuId))
 				{
-					throw new FatalException($"Could not find definition for {text4}");
+					throw new FatalException($"Could not find definition for {loop_xmlId}");
 				}
-				if (text2.Contains("68HC"))
+				if (memModel.Contains("68HC"))
 				{
 					flag = true;
 					text3 = "16";
 				}
+				int offset = GetRomLoadAddress(memModel);
 				xPathNavigator.MoveToParent();
 				while (xPathNavigator.MoveToNext())
 				{
@@ -638,18 +639,19 @@ internal class Program
 					{
 						continue;
 					}
-					string attribute = xPathNavigator.GetAttribute("name", "");
-					string text5 = xPathNavigator.GetAttribute("storageaddress", "");
-					if (!text5.StartsWith("0x"))
+					string table_name = xPathNavigator.GetAttribute("name", "");
+					string table_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
+					table_storageaddress = Add(table_storageaddress, offset);
+					if (!table_storageaddress.StartsWith("0x"))
 					{
-						text5 = "0x" + text5;
+						table_storageaddress = "0x" + table_storageaddress;
 					}
-					attribute = ConvertName(attribute);
-					UpdateTableList(attribute, text5);
+					table_name = ConvertName(table_name);
+					UpdateTableList(table_name, table_storageaddress);
 					if (flag)
 					{
-						name = ConvertName("Table_" + attribute);
-						num2 = Convert.ToInt32(text5, 16);
+						name = ConvertName("Table_" + table_name);
+						num2 = Convert.ToInt32(table_storageaddress, 16);
 						num2--;
 					}
 					List<string> list = new List<string>();
@@ -658,25 +660,26 @@ internal class Program
 						xPathNavigator.MoveToChild(XPathNodeType.Element);
 						do
 						{
-							string attribute2 = xPathNavigator.GetAttribute("type", "");
-							list.Add(attribute2);
-							string text6 = xPathNavigator.GetAttribute("storageaddress", "");
-							if (!text6.StartsWith("0x"))
+							string axis_type = xPathNavigator.GetAttribute("type", "");
+							list.Add(axis_type);
+							string axis_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
+							axis_storageaddress = Add(axis_storageaddress, offset);
+							if (!axis_storageaddress.StartsWith("0x"))
 							{
-								text6 = "0x" + text6;
+								axis_storageaddress = "0x" + axis_storageaddress;
 							}
-							attribute2 = ConvertName(attribute + "_" + attribute2);
-							UpdateTableList(attribute2, text6);
+							axis_type = ConvertName(table_name + "_" + axis_type);
+							UpdateTableList(axis_type, axis_storageaddress);
 						}
 						while (xPathNavigator.MoveToNext());
 						if (list.Count == 2 && list[0].ToUpper() == "X AXIS" && list[1].ToUpper() == "Y AXIS" && !flag)
 						{
-							string name2 = ConvertName("Table_" + attribute);
+							string name2 = ConvertName("Table_" + table_name);
 							UpdateTableList(name2, "2axis");
 						}
 						else if (list.Count == 1 && list[0].ToUpper() == "Y AXIS" && !flag)
 						{
-							string name2 = ConvertName("Table_" + attribute);
+							string name2 = ConvertName("Table_" + table_name);
 							UpdateTableList(name2, "1axis");
 						}
 						else if (list.Count > 0 && flag && list[0].ToUpper().Contains("AXIS"))
@@ -690,11 +693,11 @@ internal class Program
 				}
 				if (num < 1)
 				{
-					Console.WriteLine("// No tables found specifically for ROM " + text4 + ", used inherited ROM");
+					Console.WriteLine("// No tables found specifically for ROM " + loop_xmlId + ", used inherited ROM");
 				}
 			}
 		}
-		return new string[2] { text, text3 };
+		return new string[2] { ecuId, text3 };
 	}
 
 	/// <summary>
@@ -948,15 +951,16 @@ internal class Program
 	{
 		string text = null;
 		string value = null;
-		string text2 = null;
+		string memModel = null;
 		int num = 0;
 		string name = null;
-		bool flag = false;
+		bool romIs68HC = false;
 		int num2 = 0;
 		using (Stream stream = File.OpenRead(filename))
 		{
 			XPathDocument xPathDocument = new XPathDocument(stream);
 			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
+			int offset = GetRomLoadAddress(GetMemModel_EF_SR(xPathNavigator));
 			num = 0;
 			names.Clear();
 			string xpath = "/rom/romid/xmlid";
@@ -977,7 +981,7 @@ internal class Program
 				}
 				if (xPathNavigator.Name == "memmodel")
 				{
-					text2 = xPathNavigator.InnerXml;
+					memModel = xPathNavigator.InnerXml;
 					break;
 				}
 			}
@@ -985,9 +989,9 @@ internal class Program
 			{
 				throw new FatalException($"Could not find ECU ID for {text}");
 			}
-			if (text2.Contains("68HC"))
+			if (memModel.Contains("68HC"))
 			{
-				flag = true;
+				romIs68HC = true;
 			}
 			xPathNavigator.MoveToParent();
 			while (xPathNavigator.MoveToNext())
@@ -996,18 +1000,19 @@ internal class Program
 				{
 					continue;
 				}
-				string attribute = xPathNavigator.GetAttribute("name", "");
-				string text3 = xPathNavigator.GetAttribute("address", "");
-				if (!text3.StartsWith("0x"))
+				string table_name = xPathNavigator.GetAttribute("name", "");
+				string table_address = xPathNavigator.GetAttribute("address", "");
+				table_address = Add(table_address, offset);
+				if (!table_address.StartsWith("0x"))
 				{
-					text3 = "0x" + text3.ToUpper();
+					table_address = "0x" + table_address.ToUpper();
 				}
-				attribute = ConvertName(attribute);
-				UpdateTableList(attribute, text3);
-				if (flag)
+				table_name = ConvertName(table_name);
+				UpdateTableList(table_name, table_address);
+				if (romIs68HC)
 				{
-					name = ConvertName("Table_" + attribute);
-					num2 = Convert.ToInt32(text3, 16);
+					name = ConvertName("Table_" + table_name);
+					num2 = Convert.ToInt32(table_address, 16);
 					num2--;
 				}
 				List<string> list = new List<string>();
@@ -1016,38 +1021,39 @@ internal class Program
 					xPathNavigator.MoveToChild(XPathNodeType.Element);
 					do
 					{
-						string text4 = xPathNavigator.GetAttribute("name", "");
-						if (!text4.ToUpper().Contains("AXIS"))
+						string axis_name = xPathNavigator.GetAttribute("name", "");
+						if (!axis_name.ToUpper().Contains("AXIS"))
 						{
-							text4 += "_Axis";
+							axis_name += "_Axis";
 						}
-						list.Add(text4);
-						string text5 = xPathNavigator.GetAttribute("address", "");
-						if (!text5.StartsWith("0x"))
+						list.Add(axis_name);
+						string axis_address = xPathNavigator.GetAttribute("address", "");
+						axis_address = Add(axis_address, offset);
+						if (!axis_address.StartsWith("0x"))
 						{
-							text5 = "0x" + text5.ToUpper();
+							axis_address = "0x" + axis_address.ToUpper();
 						}
-						if (text5 != "0x")
+						if (axis_address != "0x")
 						{
-							text4 = ConvertName(attribute + "_" + text4);
-							UpdateTableList(text4, text5);
+							axis_name = ConvertName(table_name + "_" + axis_name);
+							UpdateTableList(axis_name, axis_address);
 						}
 					}
 					while (xPathNavigator.MoveToNext());
-					if (list.Count == 2 && list[0].ToUpper() == "X_AXIS" && list[1].ToUpper() == "Y_AXIS" && !flag)
+					if (list.Count == 2 && list[0].ToUpper() == "X_AXIS" && list[1].ToUpper() == "Y_AXIS" && !romIs68HC)
 					{
-						string name2 = ConvertName("Table_" + attribute);
+						string name2 = ConvertName("Table_" + table_name);
 						UpdateTableList(name2, "2axis");
 					}
-					else if (list.Count == 1 && list[0].ToUpper() == "Y_AXIS" && !flag)
+					else if (list.Count == 1 && list[0].ToUpper() == "Y_AXIS" && !romIs68HC)
 					{
-						string name2 = ConvertName("Table_" + attribute);
+						string name2 = ConvertName("Table_" + table_name);
 						UpdateTableList(name2, "1axis");
 					}
-					else if (list.Count > 0 && flag && list[0].ToUpper().Contains("AXIS"))
+					else if (list.Count > 0 && romIs68HC && list[0].ToUpper().Contains("AXIS"))
 					{
-						string address = "0x" + num2.ToString("X");
-						UpdateTableList(name, address);
+						string axis_address = "0x" + num2.ToString("X");
+						UpdateTableList(name, axis_address);
 					}
 					xPathNavigator.MoveToParent();
 				}
@@ -1069,12 +1075,66 @@ internal class Program
 		WriteIdcTableNames();
 	}
 
+	/// <summary>
+	/// Get memmodel string for EcuFlash and ScoobyRom defs
+	/// </summary>
+	/// <param name="xPathNavigator"></param>
+	/// <returns></returns>
+	private static string GetMemModel_EF_SR (XPathNavigator xPathNavigator)
+	{
+		string memModel = "";
+		string xpath = "/rom/romid/memmodel";
+		XPathNodeIterator xPathNodeIterator = xPathNavigator.Select(xpath);
+		while (xPathNodeIterator.MoveNext())
+		{
+			XPathNavigator xpn = xPathNodeIterator.Current;
+			xpn.MoveToChild(XPathNodeType.Element);
+			do
+			{
+				if (xpn.Name == "memmodel")
+				{
+					memModel = xpn.InnerXml;
+					goto exit;
+				}
+			} while (xpn.MoveToNext());
+		}
+		exit:
+		return string.IsNullOrEmpty(memModel) ? "" : memModel;
+	}
+
+	private static int GetRomLoadAddress(string memModel)
+	{
+		int addr = 0;
+		if (memModel != null)
+		{
+			if (memModel.StartsWith("MPC5746"))
+			{
+				addr = 0x8F9C000;
+			}
+		}
+		return addr;
+	}
+
+	/// <summary>
+	/// Convert hex string to number, add offset and convert back to string
+	/// </summary>
+	/// <param name="hex_address">Hex string</param>
+	/// <param name="offset">Number</param>
+	/// <returns></returns>
+	private static string Add(string hex_address, int offset)
+	{
+		int addr = Convert.ToInt32(hex_address, 16);
+		addr += offset;
+		return addr.ToString("X");
+	}
+
 	private static void PopulateScoobyRom(string fileName)
 	{
 		using (Stream stream = File.OpenRead(fileName))
 		{
 			XPathDocument xPathDocument = new XPathDocument(stream);
 			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
+			int offset = GetRomLoadAddress(GetMemModel_EF_SR(xPathNavigator));
 			names.Clear();
 
 			string xpath = "/rom";
@@ -1092,6 +1152,7 @@ internal class Program
 				}
 				string table_name = xPathNavigator.GetAttribute("name", "");
 				string table_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
+				table_storageaddress = Add(table_storageaddress, offset);
 				if (!table_storageaddress.StartsWith("0x"))
 				{
 					table_storageaddress = "0x" + table_storageaddress;
@@ -1113,6 +1174,7 @@ internal class Program
 						if (inner_element_name.StartsWith("axis") || inner_element_name == "values")
 						{
 							string inner_element_addr = xPathNavigator.GetAttribute("storageaddress", "");
+							inner_element_addr = Add (inner_element_addr, offset);
 							if (!inner_element_addr.StartsWith("0x"))
 							{
 								inner_element_addr = "0x" + inner_element_addr;
