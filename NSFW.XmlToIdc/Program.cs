@@ -641,7 +641,6 @@ internal class Program
 					}
 					string table_name = xPathNavigator.GetAttribute("name", "");
 					string table_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
-					table_storageaddress = Add(table_storageaddress, offset);
 					if (!table_storageaddress.StartsWith("0x"))
 					{
 						table_storageaddress = "0x" + table_storageaddress;
@@ -663,7 +662,6 @@ internal class Program
 							string axis_type = xPathNavigator.GetAttribute("type", "");
 							list.Add(axis_type);
 							string axis_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
-							axis_storageaddress = Add(axis_storageaddress, offset);
 							if (!axis_storageaddress.StartsWith("0x"))
 							{
 								axis_storageaddress = "0x" + axis_storageaddress;
@@ -1002,6 +1000,7 @@ internal class Program
 				}
 				string table_name = xPathNavigator.GetAttribute("name", "");
 				string table_address = xPathNavigator.GetAttribute("address", "");
+				//Not sure if EcuFlash has support for <offset>
 				table_address = Add(table_address, offset);
 				if (!table_address.StartsWith("0x"))
 				{
@@ -1028,6 +1027,7 @@ internal class Program
 						}
 						list.Add(axis_name);
 						string axis_address = xPathNavigator.GetAttribute("address", "");
+						//Not sure if EcuFlash has support for <offset>
 						axis_address = Add(axis_address, offset);
 						if (!axis_address.StartsWith("0x"))
 						{
@@ -1134,7 +1134,6 @@ internal class Program
 		{
 			XPathDocument xPathDocument = new XPathDocument(stream);
 			XPathNavigator xPathNavigator = xPathDocument.CreateNavigator();
-			int offset = GetRomLoadAddress(GetMemModel_EF_SR(xPathNavigator));
 			names.Clear();
 
 			string xpath = "/rom";
@@ -1152,7 +1151,6 @@ internal class Program
 				}
 				string table_name = xPathNavigator.GetAttribute("name", "");
 				string table_storageaddress = xPathNavigator.GetAttribute("storageaddress", "");
-				table_storageaddress = Add(table_storageaddress, offset);
 				if (!table_storageaddress.StartsWith("0x"))
 				{
 					table_storageaddress = "0x" + table_storageaddress;
@@ -1174,7 +1172,6 @@ internal class Program
 						if (inner_element_name.StartsWith("axis") || inner_element_name == "values")
 						{
 							string inner_element_addr = xPathNavigator.GetAttribute("storageaddress", "");
-							inner_element_addr = Add (inner_element_addr, offset);
 							if (!inner_element_addr.StartsWith("0x"))
 							{
 								inner_element_addr = "0x" + inner_element_addr;
