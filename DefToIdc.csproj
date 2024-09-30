@@ -4,7 +4,7 @@
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
     <OutputType>Exe</OutputType>
     <UseWindowsForms>True</UseWindowsForms>
-    <TargetFramework>net80-windows</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <PlatformTarget>x64</PlatformTarget>
    <Platforms>x64;x86</Platforms>
   </PropertyGroup>
